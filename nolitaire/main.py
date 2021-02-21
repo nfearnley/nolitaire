@@ -90,26 +90,6 @@ class Game(nygame.Game):
             return None
 
 
-def perf(fn=None, *, sort=None):
-    def wrapper(fn):
-        def wrapped(*args, **kwargs):
-            import cProfile
-            pr = cProfile.Profile(builtins=False)
-            pr.enable()
-            fn(*args, **kwargs)
-            pr.disable
-            import pstats
-            stats = pstats.Stats(pr)
-            if sort:
-                stats.sort_stats(sort)
-            stats.print_stats()
-        return wrapped
-    if fn is not None:
-        if not callable(fn):
-            raise ValueError("BeepBoop")
-        return wrapper(fn)
-    return wrapper
-
-@perf(sort="tottime")
+@nygame.perf(sort="tottime")
 def main():
     Game().run()
