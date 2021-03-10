@@ -1,95 +1,90 @@
-import random
-from os import X_OK
-from pathlib import Path
-
 import pygame
 import pygame.sprite
 import nygame
-from nygame import DigiText as T
+
+from nolitaire.cards import Card, Suit, Rank
+from nolitaire.piles import Column, Foundation, Hand
+from nolitaire.utils import take_choices
+
+class NolitaireGroup(pygame.sprite.LayeredUpdates):
+    def get_sprite_at(self, xy):
+        try:
+            return self.get_sprites_at(xy)[-1]
+        except IndexError:
+            return None
 
 
-
-class Card(pygame.sprite.Sprite):
-    SUITS = "HDCS"
-    RANKS = list(range(1, 14))
-    CARDW = 32
-    CARDH = 48
-    def __init__(self, suit, rank, card_board):
-        super().__init__()
-        self.suit = suit
-        self.rank = rank
-        src_x = (rank - 1) * self.CARDW
-        src_y = self.SUITS.index(suit) * self.CARDH
-        src_rect = pygame.rect.Rect(src_x, src_y, self.CARDW, self.CARDH)
-        self.image = card_board.subsurface(src_rect)
-        self.rect = self.image.get_rect()
 
 class Game(nygame.Game):
     def __init__(self):
-        super().__init__(bgcolor="#006000", size=(800, 600), showfps=True, fps=120)
-        nygame.digifont.init()
-        self.card_board = pygame.image.load(Path("data/trumps_royals_nums.png"))
-        self.card_board.set_colorkey("#ff00ff")
-        self.cards = pygame.sprite.LayeredUpdates()
-        for suit in Card.SUITS:
-            for rank in Card.RANKS:
-                self.cards.add(Card(suit, rank, self.card_board))
+        super().__init__(bgcolor="#006000", size=(288, 240), scale=2, showfps=True, fps=120)
+        Card.init()
+        self.cards = NolitaireGroup(Card(suit, rank) for suit in Suit for rank in Rank)
+        deck = list(self.cards)
+        self.columns = [Column(pos=(8+i*40, 64)) for i in range(7)]
+        for i, col in enumerate(self.columns):
+            card_count = len(self.columns) - i
+            taken, deck = take_choices(deck, k=card_count)
+            taken[-1].faceup = True
+            col.add(taken)
+        self.foundations = [Foundation(pos=(40+i*10,0)) for i in range(4)]
+        self.hand = Hand(pos=(8,176))
+        self.hand.add(deck)
+        self.groups = self.foundations + self.columns + [self.hand]
         self.dragging = None
         self.drag_from = None
 
     def loop(self, events):
         for event in events:
             if event.type == pygame.MOUSEBUTTONDOWN:
-                self.grab_card()
-            elif event.type == pygame.MOUSEBUTTONUP:
-                self.drop_card()
-        self.drag_card()
-
-        T.color = "black"
-        shadow = "..." + T("Hello, ", size=100) + T("World", size=100) + "!"
-        T.color = "white"
-        text = "..." + T("Hello, ", color="white", size=100) + T("World", color="pink", size=100) + "!"
-        #rando = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz1234567890"
-        #fonts = ["Arial", "Times New Roman", "Courier", "Consolas", "Comic Sans", "Papyrus"]
-        #words = ["".join(random.choices(rando, k=random.randint(4,12))) for _ in range(8)]
-        #garbo = [T(w, font=random.choice(fonts), size=random.randint(12, 56), color=random.randint(0, 0xFFFFFF) * 0x100 + 0xFF, bold=bool(random.randint(0, 1)), italic=bool(random.randint(0, 1))) for w in words]
-        #garboge = T(garbo)
-        #garboge.render_to(self.surface, (10, 200))
-        #garboge.render_to(self.surface, (10, 220))
-        #garboge.render_to(self.surface, (10, 240))
-        shadow.render_to(self.surface, (14, 108))
-        text.render_to(self.surface, (10, 100))
+                if event.button == 1:
+                    shifted = pygame.key.get_mods() & pygame.KMOD_SHIFT
+                    self.grab("pile" if shifted else "card")
+                elif event.button == 3:
+                    self.flip()
+            elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                self.drop()
+            elif event.type == pygame.MOUSEMOTION:
+                self.drag()
         self.cards.draw(self.surface)
-    
-    def grab_card(self):
-        xy = pygame.mouse.get_pos()
-        card = self.get_card_at(xy)
+
+    def grab(self, target_type):
+        xy = self.mouse_pos
+        card = self.cards.get_sprite_at(xy)
         if not card:
             return
-        self.cards.move_to_front(card)
         x, y = xy
-        self.drag_from = x - card.rect.x, y - card.rect.y
-        self.dragging = card
+        if target_type == "card":
+            card.groups()[0].move_to_front(card)
+            target = card
+        elif target_type == "pile":
+            target = card.pile
+        else:
+            raise ValueError(f"Invalid target_type: {target_type!r}")
+        self.drag_from = x - target.pos[0], y - target.pos[1]
+        self.dragging = target
 
-    def drag_card(self):
+    def drag(self):
         if not self.dragging:
             return
-        x, y = pygame.mouse.get_pos()
+        x, y = self.mouse_pos
         offx, offy = self.drag_from
-        self.dragging.rect.topleft = x - offx, y - offy
+        newpos = x - offx, y - offy
+        self.dragging.pos = newpos
 
-    def drop_card(self):
+    def drop(self):
         self.drag_from = None
         self.dragging = None
     
-    def get_card_at(self, xy):
-        try:
-            card = self.cards.get_sprites_at(xy)[-1]
-            return card
-        except IndexError:
-            return None
+    def flip(self):
+        xy = self.mouse_pos
+        card = self.cards.get_sprite_at(xy)
+        if not card:
+            return
+        card.faceup = not card.faceup
 
 
-@nygame.perf(sort="tottime")
+#@nygame.perf(sort="tottime")
 def main():
     Game().run()
+
