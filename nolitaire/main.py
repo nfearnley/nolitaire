@@ -17,7 +17,7 @@ class NolitaireGroup(pygame.sprite.LayeredUpdates):
 
 class Game(nygame.Game):
     def __init__(self):
-        super().__init__(bgcolor="#006000", size=(288, 240), scale=2, showfps=True, fps=120)
+        super().__init__(bgcolor="#006000", size=(288, 240), scale=1, showfps=True, fps=120)
         Card.init()
         self.cards = NolitaireGroup(Card(suit, rank) for suit in Suit for rank in Rank)
         deck = list(self.cards)
@@ -39,13 +39,20 @@ class Game(nygame.Game):
             if event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:
                     shifted = pygame.key.get_mods() & pygame.KMOD_SHIFT
-                    self.grab("pile" if shifted else "card")
+                    if shifted:
+                        self.grab("pile")
+                    else:
+                        self.grab("card")
                 elif event.button == 3:
                     self.flip()
             elif event.type == pygame.MOUSEBUTTONUP and event.button == 1:
                 self.drop()
             elif event.type == pygame.MOUSEMOTION:
                 self.drag()
+            elif event.type == pygame.KEYDOWN:
+                if pygame.K_1 <= event.key <= pygame.K_5:
+                    self.scale = event.key - pygame.K_1 + 1
+                    self.reset_display()
         self.cards.draw(self.surface)
 
     def grab(self, target_type):
